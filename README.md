@@ -104,7 +104,7 @@
     <div id="sheetBrandBackdrop" class="sheet-backdrop" aria-hidden="true">
       <div class="sheet" role="dialog" aria-modal="true" id="sheetBrand">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <button id="closeBrand" class="mini-btn" style="height:36px;padding:6px 8px">إغلاق</button>
         </div>
         <div class="row">
@@ -135,6 +135,14 @@
           <button id="clearImgBtn" class="mini-btn" type="button" style="display:none;color:var(--danger)">إزالة</button>
         </div>
 
+        <!-- parts UI -->
+        <div class="row" style="gap:8px;align-items:center">
+          <input id="partName" class="input" placeholder="اسم القطعة" />
+          <input id="partQty" class="input" type="number" min="1" placeholder="الكمية" style="width:110px" />
+          <button id="addPartBtn" class="mini-btn" type="button">أضف قطعة</button>
+        </div>
+        <div id="partsList" style="margin-top:8px"></div>
+
         <div style="display:flex;gap:8px;margin-top:10px">
           <button id="saveProd" class="btn-full">حفظ</button>
         </div>
@@ -145,7 +153,7 @@
     <div id="sheetMoreBackdrop" class="sheet-backdrop" aria-hidden="true">
       <div class="sheet" role="dialog" aria-modal="true" id="sheetMore">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <button id="closeMore" class="mini-btn" style="height:36px;padding:6px 8px">إغلاق</button>
         </div>
 
@@ -176,6 +184,8 @@
     const sheetBrandBackdrop = document.getElementById('sheetBrandBackdrop'), brandName = document.getElementById('brandName'), saveBrand = document.getElementById('saveBrand'), closeBrand = document.getElementById('closeBrand');
     const sheetProdBackdrop = document.getElementById('sheetProdBackdrop'), prdName = document.getElementById('prdName'), prdPrice = document.getElementById('prdPrice'), prdBrand = document.getElementById('prdBrand'), prdImgFile = document.getElementById('prdImgFile'), chooseImgBtn = document.getElementById('chooseImgBtn'), imgPreview = document.getElementById('imgPreview'), clearImgBtn = document.getElementById('clearImgBtn'), saveProd = document.getElementById('saveProd'), closeProd = document.getElementById('closeProd');
 
+    const partName = document.getElementById('partName'), partQty = document.getElementById('partQty'), addPartBtn = document.getElementById('addPartBtn'), partsList = document.getElementById('partsList');
+
     const sheetMoreBackdrop = document.getElementById('sheetMoreBackdrop'), closeMore = document.getElementById('closeMore');
     const menuExportJSON = document.getElementById('menuExportJSON'), menuExportCSV = document.getElementById('menuExportCSV'), menuImportLabel = document.getElementById('menuImportLabel'), importFile = document.getElementById('importFile');
     const menuClear = document.getElementById('menuClear'), menuAbout = document.getElementById('menuAbout');
@@ -187,6 +197,9 @@
 
     // helper: current selected image data (dataURL) for sheet
     let selectedImageData = '';
+
+    // helper: parts while editing product
+    let editingParts = [];
 
     // load/save
     function load(){
@@ -233,11 +246,12 @@
 
       filtered.forEach(p => {
         const el = document.createElement('div'); el.className = 'card pop';
+        const partsCount = (p.parts && p.parts.length) ? (' • ' + p.parts.length + ' قطع') : '';
         el.innerHTML = `
           <img class="thumb" src="${escapeAttr(p.image || placeholder())}" alt="">
           <div class="info">
             <div class="name">${escape(p.name)}</div>
-            <div class="meta">${escape(p.brand||'')} • ${Number(p.price||0).toLocaleString()} ر.س</div>
+            <div class="meta">${escape(p.brand||'')} • ${Number(p.price||0).toLocaleString()} ر.س${partsCount}</div>
           </div>
           <div class="card-actions">
             <button data-id="${p.id}" class="mini edit" title="تعديل" style="background:transparent;border:0;color:var(--text)">✎</button>
@@ -259,7 +273,7 @@
     function closeBrandSheet(){ sheetBrandBackdrop.style.display='none'; sheetBrandBackdrop.querySelector('.sheet').classList.remove('show'); brandName.value = ''; }
 
     btnAddProd.addEventListener('click', ()=> openProdSheet());
-    function openProdSheet(){ editingId = null; prdName.value=''; prdPrice.value=''; selectedImageData=''; prdImgFile.value=''; prdBrand.selectedIndex = 0; imgPreview.innerHTML=''; clearImgBtn.style.display='none'; sheetProdBackdrop.style.display='flex'; sheetProdBackdrop.querySelector('.sheet').classList.add('show'); prdName.focus(); }
+    function openProdSheet(){ editingId = null; prdName.value=''; prdPrice.value=''; selectedImageData=''; prdImgFile.value=''; prdBrand.selectedIndex = 0; imgPreview.innerHTML=''; clearImgBtn.style.display='none'; editingParts = []; renderPartsList(); sheetProdBackdrop.style.display='flex'; sheetProdBackdrop.querySelector('.sheet').classList.add('show'); prdName.focus(); }
     closeProd.addEventListener('click', ()=> closeProdSheet());
     function closeProdSheet(){ sheetProdBackdrop.style.display='none'; sheetProdBackdrop.querySelector('.sheet').classList.remove('show'); }
 
@@ -288,10 +302,10 @@
       if(!name || !brand) return toast('الاسم والنوع مطلوبان', true);
       if(editingId){
         const idx = products.findIndex(p=>p.id===editingId);
-        if(idx !== -1){ products[idx] = {...products[idx], name, price, brand, image}; toast('تم التعديل'); }
+        if(idx !== -1){ products[idx] = {...products[idx], name, price, brand, image, parts: editingParts}; toast('تم التعديل'); }
       } else {
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-        products.unshift({ id, name, price, brand, image, created: new Date().toISOString() });
+        products.unshift({ id, name, price, brand, image, parts: editingParts, created: new Date().toISOString() });
         toast('تمت الإضافة');
       }
       save(); renderProducts(); closeProdSheet();
@@ -303,8 +317,8 @@
       prdName.value = p.name; prdPrice.value = p.price; prdBrand.value = p.brand;
       selectedImageData = p.image || '';
       prdImgFile.value = '';
-      updatePreview();
-      openProdSheet();
+      editingParts = Array.isArray(p.parts) ? JSON.parse(JSON.stringify(p.parts)) : [];
+      updatePreview(); renderPartsList(); openProdSheet();
     }
 
     // file input handling
@@ -352,6 +366,38 @@
       }
     }
 
+    // parts management inside sheet
+    function renderPartsList(){
+      partsList.innerHTML = '';
+      if(!editingParts.length){ partsList.innerHTML = '<div style="color:var(--muted);font-size:13px">لا توجد قطع</div>'; return; }
+      for(const p of editingParts){
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.justifyContent = 'space-between';
+        row.style.alignItems = 'center';
+        row.style.gap = '8px';
+        row.style.padding = '6px 8px';
+        row.style.borderRadius = '8px';
+        row.style.background = 'rgba(255,255,255,0.02)';
+        row.innerHTML = `<div style="flex:1">${escape(p.name)} <span style="color:var(--muted);font-size:13px">×${p.qty}</span></div>
+          <button data-id="${p.id}" class="mini del-part" style="background:transparent;border:0;color:var(--danger)">حذف</button>`;
+        row.querySelector('.del-part').addEventListener('click', ()=> {
+          editingParts = editingParts.filter(x=>x.id!==p.id); renderPartsList();
+        });
+        partsList.appendChild(row);
+      }
+    }
+
+    addPartBtn.addEventListener('click', ()=>{
+      const name = (partName.value||'').trim();
+      const qty = Math.max(1, parseInt(partQty.value) || 1);
+      if(!name) return toast('أدخل اسم القطعة', true);
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+      editingParts.push({ id, name, qty });
+      partName.value=''; partQty.value='';
+      renderPartsList();
+    });
+
     // delete with undo
     function deleteWithUndo(id, cardEl){
       cardEl.style.transition = 'opacity .26s, transform .26s'; cardEl.style.opacity = '0'; cardEl.style.transform = 'translateY(-10px) scale(.98)';
@@ -369,15 +415,15 @@
       products.unshift(obj); localStorage.removeItem(K_LAST); save(); renderProducts(); toast('تم الاسترجاع');
     }
 
-    // export/import & clear (same as before)
+    // export/import & clear (CSV now includes parts as JSON-string)
     function downloadJSON(obj, filename='data.json'){
       const blob = new Blob([JSON.stringify(obj, null, 2)], {type:'application/json'});
       const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
     }
     function downloadCSV(items, filename='data.csv'){
       if(!items.length) return toast('لا توجد بيانات', true);
-      const headers = ['id','name','price','brand','image','note','created'];
-      const lines = [headers.join(',')].concat(items.map(p => headers.map(h => csvSafe(p[h])).join(',')));
+      const headers = ['id','name','price','brand','image','note','created','parts'];
+      const lines = [headers.join(',')].concat(items.map(p => headers.map(h => csvSafe(h === 'parts' ? JSON.stringify(p.parts || []) : p[h])).join(',')));
       const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
       const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
     }
@@ -402,12 +448,12 @@
             if(Array.isArray(data)){
               for(const it of data){
                 const id = it.id && !products.find(p=>p.id===it.id) ? it.id : Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-                products.unshift({ id, name: it.name||'', price: Number(it.price||0), brand: it.brand||defaults[0], image: it.image||'', note: it.note||'', created: it.created||new Date().toISOString() });
+                products.unshift({ id, name: it.name||'', price: Number(it.price||0), brand: it.brand||defaults[0], image: it.image||'', note: it.note||'', parts: Array.isArray(it.parts) ? it.parts : [], created: it.created||new Date().toISOString() });
               }
               save(); renderProducts(); toast('تم استيراد JSON (مصفوفة)');
             } else if(typeof data === 'object'){
               const id = data.id && !products.find(p=>p.id===data.id) ? data.id : Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-              products.unshift({ id, name: data.name||'', price: Number(data.price||0), brand: data.brand||defaults[0], image: data.image||'', note: data.note||'', created: data.created||new Date().toISOString() });
+              products.unshift({ id, name: data.name||'', price: Number(data.price||0), brand: data.brand||defaults[0], image: data.image||'', note: data.note||'', parts: Array.isArray(data.parts) ? data.parts : [], created: data.created||new Date().toISOString() });
               save(); renderProducts(); toast('تم استيراد عنصر JSON');
             } else toast('تنسيق JSON غير معروف', true);
           } catch(err){ toast('خطأ في قراءة JSON', true); }
@@ -418,7 +464,9 @@
             const cols = parseCSVLine(r);
             const obj = {}; header.forEach((h,i)=> obj[h.trim()] = cols[i] || '');
             const id = obj.id && !products.find(p=>p.id===obj.id) ? obj.id : Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-            return { id, name: obj.name||'', price: Number(obj.price||0), brand: obj.brand||defaults[0], image: obj.image||'', note: obj.note||'', created: obj.created || new Date().toISOString() };
+            let parts = [];
+            if(obj.parts){ try { parts = JSON.parse(obj.parts); } catch(e){ parts = []; } }
+            return { id, name: obj.name||'', price: Number(obj.price||0), brand: obj.brand||defaults[0], image: obj.image||'', note: obj.note||'', parts: parts, created: obj.created || new Date().toISOString() };
           });
           products = items.concat(products); save(); renderProducts(); toast('تم استيراد CSV');
         } else toast('نوع ملف غير مدعوم', true);
@@ -441,7 +489,7 @@
     });
 
     // handlers
-    btnExport.addEventListener('click', ()=> { if(!products.length) return toast('لا توجد بيانات', true); downloadJSON(products, `products_${new Date().toISOString().slice(0,10)}.json`); toast('تم التصدير'); });
+    btnExport.addEventListener('click', ()=> { if(!products.length) return toast('لا توجد بيانات', true); downloadJSON(products, `products_${new Date().toISOString().slice(0,10)}.json`); toast('تم التصدر'); });
 
     searchEl.addEventListener('input', renderProducts);
     filterEl.addEventListener('change', renderProducts);
