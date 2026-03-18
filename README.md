@@ -1,4 +1,3 @@
-
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
@@ -67,7 +66,7 @@
     /* floating add bottom-left */
     .fab{position:fixed;left:14px;bottom:80px;z-index:999;background:linear-gradient(180deg,var(--accent),var(--accent-2));color:#04221b;border:none;padding:14px 16px;border-radius:999px;font-size:22px;font-weight:900;box-shadow:0 10px 30px rgba(0,0,0,0.6)}
 
-    /* bottom center bar for export/import */
+    /* bottom center export/import */
     .bottom-bar{
       position:fixed;
       left:50%;
@@ -479,16 +478,65 @@
     function sampleIfEmpty(){ return [ {id:'d-001',model:'51 Samsung',parts:{"شاشة":"available","بوردة شحن":"available"},accessories:['كفر شفاف'],ics:['MT6357']} ]; }
     function computePct(dev){ const total = Object.keys(dev.parts||{}).length || 1; const avail = Object.values(dev.parts||{}).filter(s=>s==='available').length; return Math.round((avail/total)*100); }
 
-    // export / import (bottom center)
-    exportBtn.addEventListener('click', ()=> {
+    // export / import (bottom center) - هنا استبدلت معالج التصدير بآلية احتياطية
+    exportBtn.addEventListener('click', async () => {
+      const dataStr = JSON.stringify(devices, null, 2);
+      const filename = 'devices-backup.json';
+
+      // 1) Web Share Level 2 (مشاركة كملف) إن توفرت
       try {
-        const data = JSON.stringify(devices, null, 2);
-        const blob = new Blob([data], {type:'application/json'});
+        if (navigator.canShare && window.Blob) {
+          const blob = new Blob([dataStr], { type: 'application/json' });
+          const file = new File([blob], filename, { type: 'application/json' });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: 'نسخة احتياطية للأجهزة',
+              text: 'ملف JSON للنسخ الاحتياطي'
+            });
+            toast('تمت المشاركة');
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('share failed', err);
+      }
+
+      // 2) تنزيل Blob + anchor (مفيد في المتصفحات، أحيانًا يفتح المتصفح الخارجي من WebView)
+      try {
+        const blob = new Blob([dataStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'devices-backup.json'; a.click(); URL.revokeObjectURL(url);
-        toast('تم تصدير الملف');
-      } catch(e){ alert('فشل التصدير'); }
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        // بعض WebViews يتجاهلون download؛ فتعيين target قد يفتح المتصفح الخارجي
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        toast('جرب فتح المتصفح إذا لم يبدأ التحميل');
+        return;
+      } catch (err) {
+        console.warn('blob download failed', err);
+      }
+
+      // 3) فتح data URL مع JSON (يمكن حفظ الصفحة أو نسخ النص)
+      try {
+        const dataUrl = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+        const win = window.open(dataUrl, '_blank');
+        if (win) {
+          toast('فتح JSON في نافذة جديدة — احفظ الصفحة أو انسخ النص');
+          return;
+        }
+      } catch (err) {
+        console.warn('data url open failed', err);
+      }
+
+      // 4) عرض مودال للنسخ اليدوي
+      showCopyModal(dataStr, filename);
     });
+
     importOpenBtn.addEventListener('click', ()=> importFile.click());
     importFile.addEventListener('change', (e)=> {
       const f = e.target.files[0]; if (!f) return;
@@ -516,6 +564,59 @@
       setTimeout(()=> { t.style.opacity = 0; setTimeout(()=> t.remove(),300); }, 1400);
     }
 
+    // مودال نسخ يدوي (فالباك إن فشل التنزيل)
+    function showCopyModal(text, filename) {
+      const overlay = document.createElement('div');
+      Object.assign(overlay.style, {
+        position: 'fixed', inset: '0', background: 'rgba(0,0,0,0.6)', display: 'flex',
+        alignItems: 'center', justifyContent: 'center', zIndex: 99999
+      });
+
+      const box = document.createElement('div');
+      Object.assign(box.style, { width: '92%', maxWidth: '720px', background: '#0f2628', color: '#eaf6f0', padding: '12px', borderRadius: '12px' });
+
+      box.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:800">تصدير JSON — ${filename}</div>
+        <button id="closeCopyModal" style="background:transparent;border:none;color:#9fb4b8;font-size:20px">✕</button>
+      </div>`;
+
+      const ta = document.createElement('textarea');
+      Object.assign(ta.style, { width: '100%', height: '260px', marginTop: '8px', background:'#071a1b', color:'#eaf6f0', padding:'8px', borderRadius:'8px' });
+      ta.value = text;
+      box.appendChild(ta);
+
+      const row = document.createElement('div');
+      Object.assign(row.style, { display:'flex', gap:'8px', marginTop:'8px', justifyContent:'flex-end' });
+
+      const copyBtn = document.createElement('button');
+      copyBtn.textContent = 'نسخ';
+      Object.assign(copyBtn.style, { padding:'8px 12px', borderRadius:'8px', background:'#4ee0b0', color:'#04221b', border:'none', fontWeight:800 });
+
+      const openBtn = document.createElement('button');
+      openBtn.textContent = 'فتح في متصفح';
+      Object.assign(openBtn.style, { padding:'8px 12px', borderRadius:'8px', background:'transparent', color:'#9fb4b8', border:'1px solid rgba(255,255,255,0.04)', fontWeight:800 });
+
+      row.appendChild(openBtn);
+      row.appendChild(copyBtn);
+      box.appendChild(row);
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+
+      document.getElementById('closeCopyModal').addEventListener('click', () => overlay.remove());
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(ta.value);
+          toast('تم النسخ إلى الحافظة');
+        } catch (err) {
+          alert('فشل النسخ — انسخ يدوياً من المربع');
+        }
+      });
+      openBtn.addEventListener('click', () => {
+        const dataUrl = 'data:application/json;charset=utf-8,' + encodeURIComponent(ta.value);
+        window.open(dataUrl, '_blank');
+      });
+    }
+
     // make openPartsOnly accessible
     window.openPartsOnly = openPartsOnly;
 
@@ -524,4 +625,3 @@
   </script>
 </body>
 </html>
-```
