@@ -246,6 +246,7 @@
 
       filtered.forEach(p => {
         const el = document.createElement('div'); el.className = 'card pop';
+        el.style.cursor = 'pointer';
         const partsCount = (p.parts && p.parts.length) ? (' • ' + p.parts.length + ' قطع') : '';
         el.innerHTML = `
           <img class="thumb" src="${escapeAttr(p.image || placeholder())}" alt="">
@@ -258,6 +259,11 @@
             <button data-id="${p.id}" class="mini del" title="حذف" style="background:transparent;border:0;color:var(--danger)">🗑</button>
           </div>
         `;
+        // open edit when tapping the card (ignore clicks on buttons inside the card)
+        el.addEventListener('click', (ev)=>{
+          if(ev.target.closest('button')) return; // clicked a button, do nothing here
+          openEdit(p.id);
+        });
         el.querySelector('.edit').addEventListener('click', ()=> openEdit(p.id));
         el.querySelector('.del').addEventListener('click', ()=> deleteWithUndo(p.id, el));
         listArea.appendChild(el);
@@ -416,11 +422,11 @@
     }
 
     // export/import & clear (CSV now includes parts as JSON-string)
-    function downloadJSON(obj, filename='data.json'){
+    function downloadJSON(obj, filename='data.json'){  
       const blob = new Blob([JSON.stringify(obj, null, 2)], {type:'application/json'});
       const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
     }
-    function downloadCSV(items, filename='data.csv'){
+    function downloadCSV(items, filename='data.csv'){ 
       if(!items.length) return toast('لا توجد بيانات', true);
       const headers = ['id','name','price','brand','image','note','created','parts'];
       const lines = [headers.join(',')].concat(items.map(p => headers.map(h => csvSafe(h === 'parts' ? JSON.stringify(p.parts || []) : p[h])).join(',')));
@@ -433,7 +439,7 @@
       closeMoreSheet(); if(!products.length) return toast('لا توجد بيانات', true);
       downloadJSON(products, `products_${new Date().toISOString().slice(0,10)}.json`); toast('تم تصدير JSON');
     });
-    menuExportCSV.addEventListener('click', ()=>{ closeMoreSheet(); if(!products.length) return toast('لا توجد بيانات', true); downloadCSV(products, `products_${new Date().toISOString().slice(0,10)}.csv`); toast('تم تصدير CSV'); });
+    menuExportCSV.addEventListener('click', ()=>{closeMoreSheet(); if(!products.length) return toast('لا توجد بيانات', true); downloadCSV(products, `products_${new Date().toISOString().slice(0,10)}.csv`); toast('تم تصدير CSV');});
 
     importFile.addEventListener('change', handleImport);
     menuImportLabel.addEventListener('click', ()=> importFile.click());
